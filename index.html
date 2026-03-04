@@ -47,14 +47,14 @@
 
         .event-grid { 
             display: grid; 
-            grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); 
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); 
             gap: 15px; 
         }
 
         .event-card { 
             background: #25283d; border-radius: 8px; padding: 15px; 
             border: 1px solid #33364d; transition: 0.2s;
-            position: relative; overflow: hidden;
+            position: relative;
         }
 
         .event-card.active { border-color: var(--danger); box-shadow: 0 0 10px rgba(224, 49, 49, 0.2); }
@@ -84,16 +84,16 @@
 <div class="container">
     <div class="header">
         <div id="clock">00:00:00</div>
-        <div class="utc-info" id="utc-clock">UTC 載入中...</div>
+        <div class="utc-info" id="utc-clock">正在校準伺服器時間...</div>
     </div>
 
     <div id="app">
-        <div style="text-align:center; padding:40px; color:#666;">讀取試算表資料中...</div>
+        <div style="text-align:center; padding:40px; color:#666;">讀取 Google Sheet 資料中...</div>
     </div>
 
     <footer>
-        資料來源：Google Sheets (已連結至您的 CSV) <br>
-        同步機制：UTC 時間對照 / 每 60 秒自動更新
+        資料來源：您的 Google Sheets (已發布為 CSV) <br>
+        系統每 60 秒自動掃描一次時間切片
     </footer>
 </div>
 
@@ -105,7 +105,7 @@ function updateClock() {
     document.getElementById('clock').innerText = now.toLocaleTimeString('zh-TW', {hour12:false});
     const h = now.getUTCHours().toString().padStart(2, '0');
     const m = now.getUTCMinutes().toString().padStart(2, '0');
-    document.getElementById('utc-clock').innerText = `目前系統 UTC 時間：${h}:${m} (自動顯示 2 小時內活動)`;
+    document.getElementById('utc-clock').innerText = `目前 UTC 時間：${h}:${m} (自動顯示未來 120 分鐘之場次)`;
 }
 setInterval(updateClock, 1000);
 updateClock();
@@ -113,7 +113,7 @@ updateClock();
 async function init() {
     try {
         const response = await fetch(CSV_URL, { cache: "no-store" });
-        if (!response.ok) throw new Error("無法連線至 Google Sheets");
+        if (!response.ok) throw new Error("無法連線至 Google Sheets，請檢查發布設定。");
         const csvText = await response.text();
         const data = parseCSV(csvText);
         render(data);
@@ -126,14 +126,13 @@ function parseCSV(csv) {
     const lines = csv.split(/\r?\n/);
     if (lines.length < 1) return [];
 
-    // 解析 Header 並清理隱藏字元
     const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
     
     const result = [];
     for (let i = 1; i < lines.length; i++) {
         const line = lines[i].trim();
-        // 過濾掉完全空白或只有逗號的無效行
-        if (!line || line.replace(/,/g, '').length === 0) continue;
+        // 過濾掉完全空白行
+        if (!line || line.split(',').every(cell => cell.trim() === "")) continue;
 
         const values = line.split(',');
         const obj = {};
@@ -151,47 +150,49 @@ function render(data) {
 
     const now = new Date();
     const currentUTCMin = (now.getUTCHours() * 60) + now.getUTCMinutes();
-    const WINDOW = 120; // 顯示未來 120 分鐘
+    const WINDOW = 120; 
 
     const groups = {};
 
     data.forEach(item => {
-        // --- 精確對應您的 CSV 標題 ---
+        // 對應您 CSV 的精確標題
         const region = item["區域"];
-        const metaName = item["Meta名稱"] || item["Meta"]; // 若名稱沒填，抓 Meta 代號
+        const metaName = item["Meta名稱"];
         const startStr = item["開始時間"];
         const endStr = item["結束時間"];
         const intervalStr = item["週期"];
         const note = item["註記"];
 
+        // 如果連區域、時間或週期都沒有，就視為無效資料跳過
         if (!region || !startStr || !intervalStr) return;
         if (!groups[region]) groups[region] = [];
 
         const startMin = timeToMin(startStr);
         const interval = parseInt(intervalStr);
         
-        // 持續時間計算：若沒填結束時間，預設 30 分
+        // 持續時間計算：若沒填結束，預設 30 分
         let duration = 30;
         if (endStr && endStr.includes(':')) {
-            duration = timeToMin(endStr) - startMin;
-            if (duration < 0) duration += 1440;
+            const endMin = timeToMin(endStr);
+            duration = endMin - startMin;
+            if (duration < 0) duration += 1440; // 處理跨日
         }
 
-        // 計算 24 小時內的所有循環
+        // 遍歷 24 小時內的循環
         for (let t = startMin; t < startMin + 1440; t += interval) {
-            let eventTime = t % 1440;
-            let diff = eventTime - currentUTCMin;
+            let eventStartTime = t % 1440;
+            let diff = eventStartTime - currentUTCMin;
             
-            // 處理跨日邏輯：將 diff 限制在 -720 到 720 分鐘之間
+            // 處理 UTC 跨日比對邏輯
             if (diff < -720) diff += 1440;
             if (diff > 720) diff -= 1440;
 
-            // 顯示條件：未來 120 分鐘內 OR 正在進行中 (diff 介於 0 到 -duration)
+            // 核心邏輯：顯示未來 120 分鐘內 OR 正在進行中
             if ((diff > 0 && diff <= WINDOW) || (diff <= 0 && diff > -duration)) {
                 groups[region].push({
                     name: metaName,
                     note: note,
-                    timeDisplay: minToTime(eventTime),
+                    timeDisplay: minToTime(eventStartTime),
                     wait: diff,
                     isActive: diff <= 0
                 });
@@ -201,7 +202,7 @@ function render(data) {
 
     const sortedRegions = Object.keys(groups).sort();
     if (sortedRegions.length === 0) {
-        app.innerHTML = '<div style="text-align:center; padding:50px; color:#555;">目前時段無對應活動。</div>';
+        app.innerHTML = '<div style="text-align:center; padding:50px; color:#555;">試算表中查無符合目前時段的資料 (請確認「開始時間」與「週期」已填寫)。</div>';
         return;
     }
 
@@ -209,11 +210,9 @@ function render(data) {
         const section = document.createElement('div');
         section.className = 'axis-row';
         
-        // 該區域內依時間排序
         groups[region].sort((a, b) => a.wait - b.wait);
 
         let html = `<div class="axis-title">${region}</div><div class="event-grid">`;
-        
         groups[region].forEach(ev => {
             const badgeClass = ev.isActive ? 'bg-now' : 'bg-wait';
             const badgeText = ev.isActive ? '進行中' : `${ev.wait}m`;
@@ -226,7 +225,6 @@ function render(data) {
                 </div>
             `;
         });
-
         html += `</div>`;
         section.innerHTML = html;
         app.appendChild(section);
@@ -234,9 +232,9 @@ function render(data) {
 }
 
 function timeToMin(t) {
-    if (!t) return 0;
-    const parts = t.split(':');
-    return (parseInt(parts[0]) * 60) + (parseInt(parts[1] || 0));
+    if (!t || !t.includes(':')) return 0;
+    const [h, m] = t.split(':').map(Number);
+    return (h * 60) + (m || 0);
 }
 
 function minToTime(m) {
@@ -246,7 +244,7 @@ function minToTime(m) {
 }
 
 init();
-setInterval(init, 60000); // 每分鐘自動更新
+setInterval(init, 60000);
 </script>
 
 </body>
