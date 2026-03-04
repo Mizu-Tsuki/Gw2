@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GW2 多軸 Meta 儀表板</title>
+    <style>
+        :root {
+            --bg-color: #0f111a;
+            --card-bg: #1a1c2c;
+            --primary: #5c7cfa;
+            --accent: #fcc419;
+            --text: #eceef2;
+            --text-dim: #909296;
+        }
+
+        body { 
+            font-family: "Microsoft JhengHei", "Segoe UI", sans-serif; 
+            background: var(--bg-color); color: var(--text); 
+            margin: 0; padding: 20px;
+        }
+
+        .container { max-width: 1300px; margin: 0 auto; }
+
+        .header {
+            text-align: center; margin-bottom: 30px; padding: 25px;
+            background: var(--card-bg); border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+
+        #clock { font-size: 2.5em; font-weight: 800; color: var(--primary); margin-bottom: 5px; }
+        .utc-info { font-size: 0.9em; color: var(--text-dim); letter-spacing: 1px; }
+
+        .axis-row { 
+            background: var(--card-bg); border-radius: 12px; 
+            padding: 20px; margin-bottom: 30px; 
+            border-left: 8px solid var(--primary);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+
+        .axis-title { 
+            font-size: 1.5em; font-weight: bold; margin-bottom: 20px; 
+            color: var(--primary); display: flex; align-items: center;
+        }
+
+        .event-grid { 
+            display: grid; 
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); 
+            gap: 20px; 
+        }
+
+        .event-card { 
+            background: #25283d; border-radius: 10px; padding: 18px; 
+            border: 1px solid #33364d; transition: 0.3s;
+        }
+
+        .event-card:hover { transform: translateY(-5px); border-color: var(--primary); }
+
+        .event-time { 
+            color: var(--accent); font-weight: bold; font-size: 1.2em; margin-bottom: 10px; 
+        }
+
+        .event-name { font-size: 1.2em; font-weight: 700; margin-bottom: 12px; }
+
+        .event-note { 
+            font-size: 0.95em; color: var(--text-dim); padding-top: 12px; 
+            border-top: 1px solid #3d415b; white-space: pre-line;
+        }
+
+        .status-badge {
+            display: inline-block; padding: 2px 8px; border-radius: 4px;
+            font-size: 0.8em; margin-left: 8px; vertical-align: middle;
+        }
+        .status-now { background: #e03131; color: white; }
+        .status-wait { background: #37b24d; color: white; }
+
+        .error-box { background: #c92a2a; color: white; padding: 20px; border-radius: 10px; text-align: center; }
+        footer { text-align: center; margin-top: 60px; color: #5c5f66; font-size: 0.85em; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <div id="clock">00:00:00</div>
+        <div class="utc-info" id="utc-clock">正在校對伺服器時間...</div>
+    </div>
+
+    <div id="app">
+        <div style="text-align:center; padding: 50px;">正在擷取試算表資料，請稍候...</div>
+    </div>
+
+    <footer>
+        資料來源：Google Sheets (已連結至您的 CSV 網址) <br>
+        本系統採 UTC 時間比對，每分鐘自動刷新場次狀態
+    </footer>
+</div>
+
+<script>
+// 您提供的 CSV 網址
+const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSvM633_pUbjqHmD7B4CgH5wyL4qxxA3Vrae1uARWf3RXz0a3hV2HtWF_kqpSg2W7bhXQLUVUdhqs5Y/pub?gid=0&single=true&output=csv";
+
+function updateClock() {
+    const now = new Date();
+    document.getElementById('clock').innerText = now.toLocaleTimeString('zh-TW', {hour12:false});
+    
+    const h = now.getUTCHours().toString().padStart(2, '0');
+    const m = now.getUTCMinutes().toString().padStart(2, '0');
+    document.getElementById('utc-clock').innerText = `當前系統判定 UTC 時間：${h}:${m} (自動追蹤未來 120 分鐘之活動)`;
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+async function init() {
+    try {
+        // 使用 no-store 確保每次抓取都是最新版本
+        const response = await fetch(CSV_URL, { cache: "no-store" });
+        if (!response.ok) throw new Error("網路連線失敗，請確認是否已發布 CSV");
+        
+        const csvText = await response.text();
+        
+        // 如果抓到的是網頁內容而非 CSV 標頭
+        if (csvText.includes("<!DOCTYPE html>")) {
+            throw new Error("網址指向了 HTML 頁面。請確認發布設定為『CSV』格式。");
+        }
+
+        const data = parseCSV(csvText);
+        render(data);
+    } catch (err) {
+        document.getElementById('app').innerHTML = `
+            <div class="error-box">
+                <h2>讀取失敗 (Failed to fetch)</h2>
+                <p>${err.message}</p>
+                <p style="font-size:0.8em; margin-top:10px;">提示：如果您在本地直接開啟檔案，瀏覽器可能會攔截請求。建議上傳至 GitHub Pages 測試。</p>
+            </div>`;
+    }
+}
+
+// 支援您的中文標題與引號處理
+function parseCSV(csv) {
+    const lines = csv.split(/\r?\n/);
+    if (lines.length < 2) return [];
+
+    // 第一列標題：編號,類型,名稱,開始時間,間隔,備註,Wiki連結
+    const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+    
+    return lines.slice(1).filter(l => l.trim() !== "").map(line => {
+        // 處理內容可能含有逗號的情況
+        const values = line.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || [];
+        let obj = {};
+        headers.forEach((h, i) => {
+            let val = values[i] || "";
+            obj[h] = val.trim().replace(/^"|"$/g, '');
+        });
+        return obj;
+    });
+}
+
+function render(data) {
+    const app = document.getElementById('app');
+    app.innerHTML = "";
+
+    const now = new Date();
+    const currentUTCMin = (now.getUTCHours() * 60) + now.getUTCMinutes();
+    const LOOKAHEAD = 120; // 追蹤未來 2 小時
+
+    const groups = {};
+
+    data.forEach(item => {
+        // 對應您的 CSV 欄位名稱
+        const type = item["類型"];
+        const name = item["名稱"];
+        const startStr = item["開始時間"];
+        const intervalStr = item["間隔"];
+        const note = item["備註"];
+
+        if (!type || !startStr || !intervalStr) return;
+        if (!groups[type]) groups[type] = [];
+
+        const startMin = timeToMin(startStr);
+        const interval = parseInt(intervalStr);
+
+        for (let t = startMin; t < startMin + 1440; m = t += interval) {
+            let eventTime = t % 1440;
+            let diff = eventTime - currentUTCMin;
+            
+            // 跨日處理
+            if (diff < -1300) diff += 1440; 
+
+            // 顯示正在進行中(前10分)到未來120分鐘的事件
+            if (diff >= -10 && diff <= LOOKAHEAD) {
+                groups[type].push({
+                    name: name,
+                    note: note,
+                    timeStr: minToTime(eventTime),
+                    wait: diff
+                });
+            }
+        }
+    });
+
+    const axisKeys = Object.keys(groups).sort();
+    if (axisKeys.length === 0) {
+        app.innerHTML = '<div style="text-align:center; color:#666;">目前時段無對應活動場次。</div>';
+        return;
+    }
+
+    axisKeys.forEach(axis => {
+        const section = document.createElement('div');
+        section.className = 'axis-row';
+        
+        groups[axis].sort((a, b) => a.wait - b.wait);
+
+        let gridHtml = `<div class="axis-title">${axis}</div><div class="event-grid">`;
+        
+        groups[axis].forEach(ev => {
+            const badge = ev.wait <= 0 ? 
+                `<span class="status-badge status-now">進行中</span>` : 
+                `<span class="status-badge status-wait">${ev.wait}m</span>`;
+
+            gridHtml += `
+                <div class="event-card">
+                    <div class="event-time">${ev.timeStr} ${badge}</div>
+                    <div class="event-name">${ev.name}</div>
+                    <div class="event-note">${ev.note || "無特別註記"}</div>
+                </div>
+            `;
+        });
+
+        gridHtml += `</div>`;
+        section.innerHTML = gridHtml;
+        app.appendChild(section);
+    });
+}
+
+function timeToMin(t) {
+    const [h, m] = t.split(':').map(Number);
+    return (h * 60) + m;
+}
+
+function minToTime(m) {
+    const h = Math.floor(m / 60).toString().padStart(2, '0');
+    const mins = (m % 60).toString().padStart(2, '0');
+    return `${h}:${mins}`;
+}
+
+init();
+// 每 60 秒自動掃描一次時間
+setInterval(init, 60000);
+</script>
+</body>
+</html>
