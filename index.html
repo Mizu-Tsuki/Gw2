@@ -2,77 +2,91 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>GW2 Wiki 風格多軸計時器</title>
+    <title>GW2 獨立多軸計時器</title>
     <style>
         :root {
-            --bg: #111;
-            --track-bg: #222;
-            --marker-color: #ff4444;
+            --bg: #0f111a;
+            --track: #1a1c2c;
             --primary: #5c7cfa;
+            --accent: #fcc419;
+            --text: #eceef2;
+            --text-dim: #909296;
+            --now-line: #ff4444;
         }
-        body { font-family: sans-serif; background: var(--bg); color: #eee; margin: 0; padding: 20px; }
+        body { font-family: "Microsoft JhengHei", sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 10px; overflow-x: hidden; }
         
-        .timer-container { position: relative; width: 100%; max-width: 1400px; margin: 0 auto; overflow-x: hidden; }
+        .timer-viewport { position: relative; width: 100%; margin: 0 auto; background: var(--track); border-radius: 8px; overflow: hidden; }
 
-        /* 時間刻度尺 */
+        /* 時間軸刻度 */
         .time-scale {
-            position: relative; height: 30px; border-bottom: 1px solid #444;
-            margin-bottom: 10px; display: flex;
+            position: sticky; top: 0; height: 35px; background: #25283d;
+            border-bottom: 1px solid #3d415b; z-index: 101;
         }
-        .time-tick {
-            position: absolute; border-left: 1px solid #555; height: 10px; bottom: 0;
-            font-size: 10px; padding-left: 3px; color: #888;
-        }
-
-        /* 每一條軸 (軌道) */
-        .axis-row {
-            position: relative; height: 60px; background: var(--track-bg);
-            margin-bottom: 5px; border-radius: 4px; display: flex; align-items: center;
-        }
-        .axis-label {
-            position: absolute; left: 10px; z-index: 10; font-weight: bold;
-            background: rgba(0,0,0,0.7); padding: 2px 5px; border-radius: 3px; pointer-events: none;
+        .tick {
+            position: absolute; border-left: 1px solid #444; height: 100vh; /* 讓刻度線貫穿所有軸 */
+            font-size: 11px; color: var(--text-dim); padding-left: 4px; padding-top: 5px; pointer-events: none;
         }
 
-        /* 事件色塊 */
+        /* 每一條獨立軸 */
+        .meta-track {
+            position: relative; height: 45px; border-bottom: 1px solid #2d3045;
+            display: flex; align-items: center; transition: background 0.2s;
+        }
+        .meta-track:hover { background: rgba(255,255,255,0.05); }
+
+        /* 左側標籤區 */
+        .meta-info {
+            position: sticky; left: 0; width: 180px; height: 100%;
+            background: #1a1c2c; z-index: 100; display: flex; flex-direction: column;
+            justify-content: center; padding-left: 10px; border-right: 2px solid var(--primary);
+            box-shadow: 5px 0 10px rgba(0,0,0,0.5); font-size: 13px;
+        }
+        .region-tag { font-size: 10px; color: var(--primary); font-weight: bold; text-transform: uppercase; }
+        .meta-name { font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+        /* 事件 Bar */
         .event-bar {
-            position: absolute; height: 40px; background: var(--primary);
-            border: 1px solid rgba(255,255,255,0.2); border-radius: 4px;
-            display: flex; flex-direction: column; justify-content: center;
-            padding: 0 10px; box-sizing: border-box; font-size: 12px;
-            overflow: hidden; white-space: nowrap; transition: left 0.5s linear;
+            position: absolute; height: 28px; background: #3b4261;
+            border-radius: 4px; border: 1px solid rgba(255,255,255,0.1);
+            display: flex; align-items: center; padding: 0 8px;
+            font-size: 11px; white-space: nowrap; color: #fff; z-index: 10;
         }
-        .event-bar.active { background: #c92a2a; box-shadow: 0 0 10px #ff4444; }
-        .event-bar .name { font-weight: bold; }
-        .event-bar .note { font-size: 10px; opacity: 0.8; }
+        .event-bar.active { background: #c92a2a; border-color: #ff8787; box-shadow: 0 0 8px rgba(201, 42, 42, 0.6); }
+        .event-bar .note { font-size: 10px; color: #ffcc00; margin-left: 5px; opacity: 0.9; }
 
         /* 現在時間紅線 */
-        .now-indicator {
+        .now-line {
             position: absolute; top: 0; bottom: 0; width: 2px;
-            background: var(--marker-color); z-index: 100;
-            box-shadow: 0 0 5px #ff4444;
+            background: var(--now-line); z-index: 102; pointer-events: none;
+            box-shadow: 0 0 10px var(--now-line);
         }
-        
-        .header { text-align: center; margin-bottom: 20px; }
+
+        .header { display: flex; justify-content: space-between; align-items: center; padding: 10px 20px; }
+        #clock { font-size: 1.5em; font-weight: bold; color: var(--primary); }
     </style>
 </head>
 <body>
 
 <div class="header">
-    <h2 id="clock">00:00:00</h2>
-    <p id="utc-hint">正在載入試算表資料...</p>
+    <div id="clock">00:00:00</div>
+    <div style="font-size: 12px; color: var(--text-dim);">
+        <span style="color:var(--now-line)">█</span> 現在時間 | 
+        <span style="color:var(--primary)">█</span> 獨立 Meta 軸 
+    </div>
 </div>
 
-<div class="timer-container" id="timer-box">
-    <div class="time-scale" id="scale"></div>
-    <div id="tracks"></div>
-    <div class="now-indicator" id="now-line" style="left: 10%;"></div>
+<div class="timer-viewport">
+    <div class="time-scale" id="time-scale"></div>
+    <div class="now-line" id="now-indicator"></div>
+    <div id="tracks-container"></div>
 </div>
 
 <script>
 const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSvM633_pUbjqHmD7B4CgH5wyL4qxxA3Vrae1uARWf3RXz0a3hV2HtWF_kqpSg2W7bhXQLUVUdhqs5Y/pub?gid=0&single=true&output=csv";
-const VIEW_RANGE = 120; // 顯示未來 120 分鐘
-const NOW_OFFSET_PCT = 10; // "現在" 紅線位在左側 10% 處，保留一點過去的視野
+const RANGE_MINS = 150; // 顯示未來 150 分鐘
+const LEFT_OFFSET_MINS = 20; // 顯示過去 20 分鐘
+const PIXELS_PER_MIN = 8; // 每分鐘佔幾像素 (可調整縮放)
+const TRACK_LABEL_WIDTH = 180;
 
 async function init() {
     try {
@@ -80,7 +94,7 @@ async function init() {
         const csvText = await response.text();
         const data = parseCSV(csvText);
         render(data);
-    } catch (e) { console.error(e); }
+    } catch (e) { console.error("Error:", e); }
 }
 
 function parseCSV(csv) {
@@ -95,90 +109,98 @@ function parseCSV(csv) {
 }
 
 function render(data) {
-    const tracksContainer = document.getElementById('tracks');
-    const scaleContainer = document.getElementById('scale');
-    tracksContainer.innerHTML = "";
-    scaleContainer.innerHTML = "";
+    const container = document.getElementById('tracks-container');
+    const scale = document.getElementById('time-scale');
+    const nowIndicator = document.getElementById('now-indicator');
+    
+    container.innerHTML = "";
+    scale.innerHTML = "";
 
     const now = new Date();
     const currentUTCMin = (now.getUTCHours() * 60) + now.getUTCMinutes();
-    
-    // 1. 生成時間刻度 (120 分鐘)
-    for (let i = -10; i <= VIEW_RANGE; i += 15) {
+
+    // 1. 設置現在時間紅線位置
+    const nowPos = TRACK_LABEL_WIDTH + (LEFT_OFFSET_MINS * PIXELS_PER_MIN);
+    nowIndicator.style.left = nowPos + "px";
+
+    // 2. 畫時間刻度 (每 15 分鐘一個)
+    for (let i = -LEFT_OFFSET_MINS; i <= RANGE_MINS; i += 15) {
         const tick = document.createElement('div');
-        tick.className = 'time-tick';
-        tick.style.left = `${((i + 10) / (VIEW_RANGE + 10)) * 100}%`;
-        const tickTime = (currentUTCMin + i + 1440) % 1440;
-        tick.innerText = `${Math.floor(tickTime/60).toString().padStart(2,'0')}:${(tickTime%60).toString().padStart(2,'0')}`;
-        scaleContainer.appendChild(tick);
+        tick.className = 'tick';
+        tick.style.left = (nowPos + (i * PIXELS_PER_MIN)) + "px";
+        const t = (currentUTCMin + i + 1440) % 1440;
+        tick.innerText = `${Math.floor(t/60).toString().padStart(2,'0')}:${(t%60).toString().padStart(2,'0')}`;
+        scale.appendChild(tick);
     }
 
-    // 2. 分組與計算
-    const groups = {};
+    // 3. 處理每一個 Meta 為獨立一行
     data.forEach(item => {
         const region = item["區域"];
-        const name = item["Meta名稱"] || item["Meta"];
+        const metaName = item["Meta名稱"];
         const startStr = item["開始時間"];
         const endStr = item["結束時間"];
         const interval = parseInt(item["週期"]);
-        if (!region || !startStr || !interval) return;
 
-        if (!groups[region]) groups[region] = [];
+        if (!metaName || !startStr || !interval) return;
 
         const startMin = timeToMin(startStr);
         let duration = 20; 
-        if (endStr) {
+        if (endStr && endStr.includes(':')) {
             duration = timeToMin(endStr) - startMin;
             if (duration < 0) duration += 1440;
         }
 
-        for (let t = startMin; t < startMin + 1440; t += interval) {
-            let eventT = t % 1440;
-            let diff = eventT - currentUTCMin;
+        const track = document.createElement('div');
+        track.className = 'meta-track';
+        track.innerHTML = `
+            <div class="meta-info">
+                <div class="region-tag">${region}</div>
+                <div class="meta-name">${metaName}</div>
+            </div>
+        `;
+
+        // 找出視野內的場次
+        for (let t = startMin; t < startMin + 2880; t += interval) {
+            let eventStart = t % 1440;
+            let diff = eventStart - currentUTCMin;
+            
+            // 處理跨日邏輯修正
             if (diff < -720) diff += 1440;
             if (diff > 720) diff -= 1440;
 
-            // 如果活動在視野內 (-15分到+120分)
-            if (diff > -duration - 10 && diff < VIEW_RANGE) {
-                groups[region].push({ name, note: item["註記"], start: diff, duration });
+            if (diff > -duration - 30 && diff < RANGE_MINS) {
+                const bar = document.createElement('div');
+                const isActive = (diff <= 0 && diff > -duration);
+                bar.className = 'event-bar' + (isActive ? ' active' : '');
+                
+                const barLeft = nowPos + (diff * PIXELS_PER_MIN);
+                const barWidth = duration * PIXELS_PER_MIN;
+
+                bar.style.left = barLeft + "px";
+                bar.style.width = barWidth + "px";
+                bar.innerHTML = `<span>${minToTime(eventStart)}</span><span class="note">${item["註記"] || ""}</span>`;
+                track.appendChild(bar);
             }
         }
-    });
-
-    // 3. 繪製軌道
-    Object.keys(groups).sort().forEach(region => {
-        const row = document.createElement('div');
-        row.className = 'axis-row';
-        row.innerHTML = `<div class="axis-label">${region}</div>`;
-
-        groups[region].forEach(ev => {
-            const bar = document.createElement('div');
-            bar.className = 'event-bar' + (ev.start <= 0 ? ' active' : '');
-            
-            // 計算位置：(時間偏移 + 10分鐘緩衝) / 總顯示長度
-            const totalRange = VIEW_RANGE + 10;
-            const left = ((ev.start + 10) / totalRange) * 100;
-            const width = (ev.duration / totalRange) * 100;
-
-            bar.style.left = `${left}%`;
-            bar.style.width = `${width}%`;
-            bar.innerHTML = `<div class="name">${ev.name}</div><div class="note">${ev.note || ""}</div>`;
-            row.appendChild(bar);
-        });
-        tracksContainer.appendChild(row);
+        container.appendChild(track);
     });
 
     document.getElementById('clock').innerText = now.toLocaleTimeString();
-    document.getElementById('utc-hint').innerText = `目前 UTC ${Math.floor(currentUTCMin/60).toString().padStart(2,'0')}:${(currentUTCMin%60).toString().padStart(2,'0')} | 自動同步 Wiki 樣式多軸`;
 }
 
 function timeToMin(t) {
     const [h, m] = t.split(':').map(Number);
-    return h * 60 + m;
+    return (h * 60) + (m || 0);
+}
+
+function minToTime(m) {
+    const h = Math.floor(m / 60).toString().padStart(2, '0');
+    const mins = (m % 60).toString().padStart(2, '0');
+    return `${h}:${mins}`;
 }
 
 init();
-setInterval(init, 30000); // 30秒刷一次
+setInterval(init, 30000); 
 </script>
 </body>
 </html>
