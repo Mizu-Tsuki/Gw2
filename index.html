@@ -25,4 +25,156 @@
         .meta-track { position: relative; height: 55px; border-bottom: 1px solid #2d3045; display: flex; align-items: center; }
         .meta-info { 
             position: sticky; left: 0; width: 160px; height: 100%; background: #1a1c2c; z-index: 100; 
-            display: flex; flex-direction: column; justify-content: center; padding-left:
+            display: flex; flex-direction: column; justify-content: center; padding-left: 15px; 
+            border-right: 4px solid var(--blue); box-shadow: 10px 0 15px rgba(0,0,0,0.5); 
+        }
+        .region-tag { font-size: 10px; color: var(--blue); font-weight: bold; }
+        .meta-name { font-size: 14px; font-weight: bold; margin-top: 2px; white-space: nowrap; }
+
+        .bar-container { position: absolute; height: 32px; display: flex; z-index: 10; border-radius: 4px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+        .bar-blue { background: var(--blue); height: 100%; display: flex; align-items: center; padding: 0 10px; font-size: 12px; font-weight: bold; color: white; white-space: nowrap; }
+        .bar-purple { background: var(--purple); height: 100%; }
+
+        .now-line { position: absolute; top: 0; bottom: 0; width: 3px; background: var(--now); z-index: 102; box-shadow: 0 0 15px var(--now); }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+        .is-active { animation: pulse 2s infinite; }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <div id="clock">00:00:00 UTC+8</div>
+    <div style="font-size: 13px;">
+        <span style="color:var(--blue)">●</span> 藍色：保證期間 | <span style="color:var(--purple)">●</span> 紫色：趕場判斷區
+    </div>
+</div>
+
+<div class="timer-viewport">
+    <div class="time-scale" id="time-scale"></div>
+    <div class="now-line" id="now-indicator"></div>
+    <div id="tracks-container"></div>
+</div>
+
+<script>
+const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSvM633_pUbjqHmD7B4CgH5wyL4qxxA3Vrae1uARWf3RXz0a3hV2HtWF_kqpSg2W7bhXQLUVUdhqs5Y/pub?gid=0&single=true&output=csv";
+// 顯示兩小時，並留 30 分鐘顯示過去時間
+const RANGE_MINS = 120, LEFT_OFFSET = 30, PIXELS_PER_MIN = 12, LABEL_WIDTH = 160;
+
+function getUTC8Date() {
+    const now = new Date();
+    // 轉換為 UTC+8
+    return new Date(now.getTime() + (8 * 60 * 60 * 1000) + (now.getTimezoneOffset() * 60 * 1000));
+}
+
+async function init() {
+    try {
+        const res = await fetch(CSV_URL, { cache: "no-store" });
+        const text = await res.text();
+        const data = parseCSV(text);
+        render(data);
+    } catch (e) { console.error(e); }
+}
+
+function parseCSV(csv) {
+    const lines = csv.split(/\r?\n/).filter(line => line.trim() !== "");
+    const headers = lines[0].split(',').map(h => h.trim());
+    return lines.slice(1).map(line => {
+        const values = line.split(',');
+        let obj = {};
+        headers.forEach((h, i) => obj[h] = values[i] ? values[i].trim() : "");
+        return obj;
+    }).filter(item => item["Meta名稱"] && item["時間設定"] && item["時間設定"].includes(':'));
+}
+
+function render(data) {
+    const container = document.getElementById('tracks-container');
+    const scale = document.getElementById('time-scale');
+    container.innerHTML = ""; scale.innerHTML = "";
+    
+    const now8 = getUTC8Date();
+    const currentMin = (now8.getHours() * 60) + now8.getMinutes();
+    const nowPos = LABEL_WIDTH + (LEFT_OFFSET * PIXELS_PER_MIN);
+    document.getElementById('now-indicator').style.left = nowPos + "px";
+
+    // 標尺：對齊 00, 15, 30, 45 分
+    const startScaleMin = Math.floor((currentMin - LEFT_OFFSET) / 15) * 15;
+    const endScaleMin = currentMin + RANGE_MINS;
+
+    for (let m = startScaleMin; m <= endScaleMin; m += 15) {
+        const tick = document.createElement('div');
+        tick.className = 'tick';
+        const diffFromNow = m - currentMin;
+        tick.style.left = (nowPos + (diffFromNow * PIXELS_PER_MIN)) + "px";
+        
+        const displayH = Math.floor((m + 1440) % 1440 / 60);
+        const displayM = (m + 1440) % 60;
+        tick.innerText = `${displayH.toString().padStart(2,'0')}:${displayM.toString().padStart(2,'0')}`;
+        scale.appendChild(tick);
+    }
+
+    data.forEach(item => {
+        const { 區域, Meta名稱, 模式, 時間設定, 最快結束, 最慢結束 } = item;
+        const [timePart, intervalPart] = 時間設定.split('/');
+        const startMin = timeToMin(timePart);
+        const interval = parseInt(intervalPart) || 120;
+        const fastMin = parseInt(最快結束) || 0;
+        const slowMin = parseInt(最慢結束) || fastMin;
+
+        const track = document.createElement('div');
+        track.className = 'meta-track';
+        track.innerHTML = `<div class="meta-info"><div class="region-tag">${區域}</div><div class="meta-name">${Meta名稱}</div></div>`;
+
+        let schedule = [];
+        if (模式 === "CYCLE") {
+            // 計算全天循環
+            for (let t = startMin; t < startMin + 1440; t += interval) schedule.push(t % 1440);
+        } else {
+            schedule.push(startMin);
+        }
+
+        schedule.forEach(st => {
+            let diff = st - currentMin;
+            // 處理跨日循環判定
+            if (diff < -720) diff += 1440; if (diff > 720) diff -= 1440;
+
+            // 只要活動還在視野內 (顯示未來 120 分與過去 30 分)
+            if (diff > -slowMin - 30 && diff < RANGE_MINS) {
+                const barCont = document.createElement('div');
+                barCont.className = 'bar-container';
+                barCont.style.left = (nowPos + (diff * PIXELS_PER_MIN)) + "px";
+                
+                const b = document.createElement('div');
+                b.className = 'bar-blue';
+                b.style.width = (fastMin * PIXELS_PER_MIN) + "px";
+                b.innerHTML = `<span>${minToTime(st)}</span>`;
+                barCont.appendChild(b);
+
+                if (slowMin > fastMin) {
+                    const p = document.createElement('div');
+                    p.className = 'bar-purple';
+                    p.style.width = ((slowMin - fastMin) * PIXELS_PER_MIN) + "px";
+                    if (diff <= -fastMin && diff > -slowMin) p.classList.add('is-active');
+                    barCont.appendChild(p);
+                }
+                track.appendChild(barCont);
+            }
+        });
+        container.appendChild(track);
+    });
+    document.getElementById('clock').innerText = `${now8.getHours().toString().padStart(2,'0')}:${now8.getMinutes().toString().padStart(2,'0')}:${now8.getSeconds().toString().padStart(2,'0')} UTC+8`;
+}
+
+function timeToMin(t) { 
+    if(!t) return 0;
+    const [h, m] = t.split(':').map(Number); 
+    return (h * 60) + (m || 0); 
+}
+function minToTime(m) { 
+    return Math.floor((m + 1440) % 1440 / 60).toString().padStart(2, '0') + ":" + ((m + 1440) % 60).toString().padStart(2, '0'); 
+}
+
+init();
+setInterval(init, 30000);
+</script>
+</body>
+</html>
