@@ -2,56 +2,55 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>GW2 戰略計時器 (雙色獨立多軸)</title>
+    <title>GW2 獨立多軸計時器 - 最終修正版</title>
     <style>
         :root {
             --bg: #0f111a;
             --track: #1a1c2c;
-            --blue: #3498db;
-            --purple: #9b59b6;
+            --blue: #4a90e2;
+            --purple: #a4508b;
             --now: #ff4444;
             --text: #eceef2;
             --text-dim: #909296;
         }
-        body { font-family: "Microsoft JhengHei", sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 10px; overflow-x: hidden; }
-        
+        body { font-family: "Segoe UI", "Microsoft JhengHei", sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 10px; overflow-x: hidden; }
         .header { display: flex; justify-content: space-between; align-items: center; padding: 10px 20px; }
-        #clock { font-size: 1.8em; font-weight: bold; color: var(--blue); }
+        #clock { font-size: 2em; font-weight: bold; color: var(--blue); }
 
-        .timer-viewport { position: relative; width: 100%; background: var(--track); border-radius: 8px; overflow: hidden; border: 1px solid #2d3045; min-height: 300px; }
+        .timer-viewport { position: relative; width: 100%; background: var(--track); border-radius: 12px; border: 1px solid #2d3045; overflow: hidden; min-height: 400px; }
 
         /* 時間軸刻度 */
-        .time-scale { position: sticky; top: 0; height: 35px; background: #25283d; border-bottom: 1px solid #3d415b; z-index: 101; }
-        .tick { position: absolute; border-left: 1px solid #444; height: 3000px; font-size: 11px; color: var(--text-dim); padding: 5px 0 0 4px; pointer-events: none; }
+        .time-scale { position: sticky; top: 0; height: 40px; background: #25283d; border-bottom: 2px solid #3d415b; z-index: 101; }
+        .tick { position: absolute; border-left: 1px solid #444; height: 5000px; font-size: 11px; color: var(--text-dim); padding: 8px 0 0 5px; pointer-events: none; }
 
-        /* 軌道 */
-        .meta-track { position: relative; height: 50px; border-bottom: 1px solid #2d3045; display: flex; align-items: center; }
-        .meta-track:hover { background: rgba(255,255,255,0.03); }
-
+        /* 軌道樣式 */
+        .meta-track { position: relative; height: 55px; border-bottom: 1px solid #2d3045; display: flex; align-items: center; }
         .meta-info { 
-            position: sticky; left: 0; width: 180px; height: 100%; background: #1a202c; z-index: 100; 
-            display: flex; flex-direction: column; justify-content: center; padding-left: 12px; 
-            border-right: 3px solid var(--blue); box-shadow: 5px 0 10px rgba(0,0,0,0.5); font-size: 13px; 
+            position: sticky; left: 0; width: 160px; height: 100%; background: #1a1c2c; z-index: 100; 
+            display: flex; flex-direction: column; justify-content: center; padding-left: 15px; 
+            border-right: 4px solid var(--blue); box-shadow: 10px 0 15px rgba(0,0,0,0.5); 
         }
-        .region-tag { font-size: 10px; color: var(--blue); font-weight: bold; }
-        .meta-name { font-weight: bold; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .region-tag { font-size: 10px; color: var(--blue); font-weight: bold; text-transform: uppercase; }
+        .meta-name { font-size: 14px; font-weight: bold; margin-top: 2px; white-space: nowrap; }
 
-        /* Bar 容器 */
-        .bar-container { position: absolute; height: 30px; display: flex; z-index: 10; align-items: stretch; }
-        .bar-blue { background: var(--blue); height: 100%; border-radius: 4px 0 0 4px; display: flex; align-items: center; padding: 0 8px; font-size: 11px; color: white; border: 1px solid rgba(255,255,255,0.1); }
-        .bar-purple { background: var(--purple); height: 100%; border-radius: 0 4px 4px 0; border: 1px solid rgba(255,255,255,0.1); border-left: none; }
+        /* Bar 樣式 */
+        .bar-container { position: absolute; height: 32px; display: flex; z-index: 10; border-radius: 4px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+        .bar-blue { background: var(--blue); height: 100%; display: flex; align-items: center; padding: 0 10px; font-size: 12px; font-weight: bold; color: white; white-space: nowrap; }
+        .bar-purple { background: var(--purple); height: 100%; }
 
-        .now-line { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--now); z-index: 102; box-shadow: 0 0 10px var(--now); pointer-events: none; }
-        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
-        .pulse { animation: pulse 1.5s infinite; }
+        /* 紅色指針 */
+        .now-line { position: absolute; top: 0; bottom: 0; width: 3px; background: var(--now); z-index: 102; box-shadow: 0 0 15px var(--now); }
+        
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+        .is-active { animation: pulse 2s infinite; }
     </style>
 </head>
 <body>
 
 <div class="header">
     <div id="clock">00:00:00 UTC</div>
-    <div style="font-size: 12px; opacity: 0.8;">
-        <span style="color:var(--blue)">█</span> 進行中 | <span style="color:var(--purple)">█</span> 趕場區 (註記填分鐘數字)
+    <div style="font-size: 13px;">
+        <span style="color:var(--blue)">●</span> 藍色：保證期間 | <span style="color:var(--purple)">●</span> 紫色：趕場判斷區
     </div>
 </div>
 
@@ -63,27 +62,26 @@
 
 <script>
 const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSvM633_pUbjqHmD7B4CgH5wyL4qxxA3Vrae1uARWf3RXz0a3hV2HtWF_kqpSg2W7bhXQLUVUdhqs5Y/pub?gid=0&single=true&output=csv";
-const RANGE_MINS = 180, LEFT_OFFSET = 30, PIXELS_PER_MIN = 10, LABEL_WIDTH = 180;
+const RANGE_MINS = 180, LEFT_OFFSET = 30, PIXELS_PER_MIN = 12, LABEL_WIDTH = 160;
 
-async function update() {
+async function init() {
     try {
         const res = await fetch(CSV_URL, { cache: "no-store" });
         const text = await res.text();
-        render(parseCSV(text));
-    } catch (e) { console.error("Update error:", e); }
+        const data = parseCSV(text);
+        render(data);
+    } catch (e) { console.error(e); }
 }
 
 function parseCSV(csv) {
-    const lines = csv.split(/\r?\n/).filter(l => l.trim().length > 5); // 過濾全空行
-    if (lines.length < 2) return [];
+    const lines = csv.split(/\r?\n/).filter(line => line.trim() !== "");
     const headers = lines[0].split(',').map(h => h.trim());
-    
     return lines.slice(1).map(line => {
         const values = line.split(',');
         let obj = {};
         headers.forEach((h, i) => obj[h] = values[i] ? values[i].trim() : "");
         return obj;
-    }).filter(item => item["開始時間"] && item["開始時間"].includes(':')); 
+    }).filter(item => item["Meta名稱"] && item["時間設定"] && item["時間設定"].includes(':'));
 }
 
 function render(data) {
@@ -96,7 +94,6 @@ function render(data) {
     const nowPos = LABEL_WIDTH + (LEFT_OFFSET * PIXELS_PER_MIN);
     document.getElementById('now-indicator').style.left = nowPos + "px";
 
-    // 畫時間標尺
     for (let i = -LEFT_OFFSET; i <= RANGE_MINS; i += 15) {
         const tick = document.createElement('div');
         tick.className = 'tick';
@@ -107,54 +104,48 @@ function render(data) {
     }
 
     data.forEach(item => {
-        const { 區域, Meta名稱, 開始時間, 結束時間, 週期, 註記 } = item;
-        const startMin = timeToMin(開始時間);
+        // 對應你的試算表欄位名稱
+        const { 區域, Meta名稱, 模式, 時間設定, 最快結束, 最慢結束 } = item;
         
-        let blueDur = 20; 
-        if (結束時間 && 結束時間.includes(':')) {
-            blueDur = timeToMin(結束時間) - startMin;
-            if (blueDur <= 0) blueDur += 1440;
-        }
-
-        let purpleDur = 0;
-        const foundNum = 註記 ? 註記.match(/\d+/) : null;
-        if (foundNum) purpleDur = parseInt(foundNum[0]);
+        const [timePart, intervalPart] = 時間設定.split('/');
+        const startMin = timeToMin(timePart);
+        const interval = parseInt(intervalPart) || 120;
+        const fastMin = parseInt(最快結束) || 20;
+        const slowMin = parseInt(最慢結束) || fastMin;
 
         const track = document.createElement('div');
         track.className = 'meta-track';
         track.innerHTML = `<div class="meta-info"><div class="region-tag">${區域}</div><div class="meta-name">${Meta名稱}</div></div>`;
 
+        // 計算循環
         let schedule = [];
-        const interval = parseInt(週期);
-        if (isNaN(interval) || interval <= 0) {
-            schedule.push(startMin);
+        if (模式 === "CYCLE") {
+            for (let t = startMin; t < startMin + 1440; t += interval) schedule.push(t % 1440);
         } else {
-            for (let t = startMin; t < startMin + 1440; t += interval) {
-                schedule.push(t % 1440);
-            }
+            schedule.push(startMin);
         }
 
         schedule.forEach(st => {
             let diff = st - currentMin;
             if (diff < -720) diff += 1440; if (diff > 720) diff -= 1440;
 
-            if (diff > -(blueDur + purpleDur + 30) && diff < RANGE_MINS) {
+            if (diff > -slowMin - 30 && diff < RANGE_MINS) {
                 const barCont = document.createElement('div');
                 barCont.className = 'bar-container';
                 barCont.style.left = (nowPos + (diff * PIXELS_PER_MIN)) + "px";
                 
                 const b = document.createElement('div');
                 b.className = 'bar-blue';
-                b.style.width = (blueDur * PIXELS_PER_MIN) + "px";
+                b.style.width = (fastMin * PIXELS_PER_MIN) + "px";
                 b.innerHTML = `<span>${minToTime(st)}</span>`;
                 barCont.appendChild(b);
 
-                if (purpleDur > 0) {
+                if (slowMin > fastMin) {
                     const p = document.createElement('div');
                     p.className = 'bar-purple';
-                    p.style.width = (purpleDur * PIXELS_PER_MIN) + "px";
-                    // 紅線進入紫色區段時閃爍
-                    if (diff <= -blueDur && diff > -(blueDur + purpleDur)) p.classList.add('pulse');
+                    p.style.width = ((slowMin - fastMin) * PIXELS_PER_MIN) + "px";
+                    // 如果現在在紫色區間則閃爍
+                    if (diff <= -fastMin && diff > -slowMin) p.classList.add('is-active');
                     barCont.appendChild(p);
                 }
                 track.appendChild(barCont);
@@ -162,21 +153,20 @@ function render(data) {
         });
         container.appendChild(track);
     });
-    
     document.getElementById('clock').innerText = now.getUTCHours().toString().padStart(2,'0') + ":" + now.getUTCMinutes().toString().padStart(2,'0') + ":" + now.getUTCSeconds().toString().padStart(2,'0') + " UTC";
 }
 
 function timeToMin(t) { 
-    if(!t || !t.includes(':')) return 0;
-    const p = t.split(':');
-    return (parseInt(p[0]) * 60) + (parseInt(p[1]) || 0);
+    if(!t) return 0;
+    const [h, m] = t.split(':').map(Number); 
+    return (h * 60) + (m || 0); 
 }
 function minToTime(m) { 
     return Math.floor(m / 60).toString().padStart(2, '0') + ":" + (m % 60).toString().padStart(2, '0'); 
 }
 
-update();
-setInterval(update, 30000);
+init();
+setInterval(init, 30000);
 </script>
 </body>
 </html>
